@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"goscan/pkg/goscan"
+	"github.com/hllttz/goWebScan/pkg/goscan"
 )
 
 func ParseTargets(ctx context.Context, inputs []string) ([]goscan.Target, error) {

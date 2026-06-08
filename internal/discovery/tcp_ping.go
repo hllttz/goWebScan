@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"goscan/internal/scanner"
-	"goscan/pkg/goscan"
+	"github.com/hllttz/goWebScan/internal/scanner"
+	"github.com/hllttz/goWebScan/pkg/goscan"
 )
 
 type TCPDiscoverer struct {

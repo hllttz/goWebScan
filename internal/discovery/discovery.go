@@ -3,7 +3,7 @@ package discovery
 import (
 	"context"
 
-	"goscan/pkg/goscan"
+	"github.com/hllttz/goWebScan/pkg/goscan"
 )
 
 type Discoverer interface {

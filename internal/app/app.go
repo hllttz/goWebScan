@@ -6,13 +6,13 @@ import (
 	"io"
 	"sync"
 
-	"goscan/internal/discovery"
-	"goscan/internal/netutil"
-	"goscan/internal/report"
-	"goscan/internal/scanner"
-	"goscan/internal/service"
-	"goscan/internal/target"
-	"goscan/pkg/goscan"
+	"github.com/hllttz/goWebScan/internal/discovery"
+	"github.com/hllttz/goWebScan/internal/netutil"
+	"github.com/hllttz/goWebScan/internal/report"
+	"github.com/hllttz/goWebScan/internal/scanner"
+	"github.com/hllttz/goWebScan/internal/service"
+	"github.com/hllttz/goWebScan/internal/target"
+	"github.com/hllttz/goWebScan/pkg/goscan"
 )
 
 func Run(ctx context.Context, cfg Config, out io.Writer) error {
@@ -55,7 +55,11 @@ func ScanWithProgress(ctx context.Context, cfg Config, callbacks ProgressCallbac
 	if err != nil {
 		return goscan.Report{}, err
 	}
-	ports, err := target.ParsePorts(cfg.Ports)
+	ports, err := target.ParsePortsWithOptions(target.PortOptions{
+		Expression:   cfg.Ports,
+		TopPorts:     cfg.TopPorts,
+		ExcludePorts: cfg.ExcludePorts,
+	})
 	if err != nil {
 		return goscan.Report{}, err
 	}

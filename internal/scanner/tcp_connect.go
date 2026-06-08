@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"goscan/pkg/goscan"
+	"github.com/hllttz/goWebScan/pkg/goscan"
 )
 
 type TCPConnectScanner struct {

@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"testing"
 
-	"goscan/pkg/goscan"
+	"github.com/hllttz/goWebScan/pkg/goscan"
 )
 
 func TestClassifyDialError(t *testing.T) {

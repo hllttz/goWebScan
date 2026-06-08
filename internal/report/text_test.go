@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"goscan/pkg/goscan"
+	"github.com/hllttz/goWebScan/pkg/goscan"
 )
 
 func TestWriteTextNmapStyle(t *testing.T) {

@@ -3,7 +3,7 @@ package scanner
 import (
 	"context"
 
-	"goscan/pkg/goscan"
+	"github.com/hllttz/goWebScan/pkg/goscan"
 )
 
 type Scanner interface {

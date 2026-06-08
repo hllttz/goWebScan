@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"goscan/pkg/goscan"
+	"github.com/hllttz/goWebScan/pkg/goscan"
 )
 
 func WriteJSON(w io.Writer, r goscan.Report) error {

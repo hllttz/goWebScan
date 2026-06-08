@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"goscan/pkg/goscan"
+	"github.com/hllttz/goWebScan/pkg/goscan"
 )
 
 func TestMatchBannerSignatures(t *testing.T) {

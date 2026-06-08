@@ -5,6 +5,8 @@ import "time"
 type Config struct {
 	Targets         []string
 	Ports           string
+	TopPorts        int
+	ExcludePorts    string
 	Timeout         time.Duration
 	PortWorkers     int
 	HostWorkers     int
@@ -12,6 +14,13 @@ type Config struct {
 	Discovery       bool
 	ServiceVersion  bool
 	JSON            bool
+	OpenOnly        bool
+	OutputText      string
+	OutputJSON      string
+	OutputCSV       string
+	Silent          bool
+	Verbose         bool
+	NoColor         bool
 	BannerLimit     int
 }
 
