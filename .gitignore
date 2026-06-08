@@ -2,9 +2,5 @@
 dist/
 goscan
 goscan.exe
-goscan-web
-goscan-web.exe
-web/node_modules/
-web/dist/
 *.log
 *.tmp

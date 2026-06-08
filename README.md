@@ -17,7 +17,6 @@ goWebScan is a Go-based network scanner inspired by nmap. The current focus is a
 - CLI progress display.
 - Ctrl+C graceful cancellation with partial results.
 - Text output similar to nmap and JSON output for automation.
-- Optional React/Web API prototype kept in `web/` and `cmd/goscan-web/`.
 
 ## Quick Start
 
@@ -131,32 +130,10 @@ go test ./...
 
 Some tests open local TCP listeners. If your sandbox blocks local sockets, run tests in a normal terminal.
 
-Build the optional frontend prototype:
-
-```bash
-cd web
-npm install
-npm run build
-```
-
-Run the optional Web API:
-
-```bash
-go run ./cmd/goscan-web
-```
-
-Run the optional frontend dev server:
-
-```bash
-cd web
-npm run dev
-```
-
 ## Project Layout
 
 ```text
 cmd/goscan          CLI entry point
-cmd/goscan-web      Optional Web API
 internal/app        Scan orchestration
 internal/cli        CLI flags, progress, Ctrl+C handling
 internal/discovery  Host discovery
@@ -165,7 +142,6 @@ internal/service    Service detection
 internal/report     Text and JSON output
 internal/target     Target and port parsing
 pkg/goscan          Shared result types
-web                 Optional React frontend prototype
 ```
 
 ## License
