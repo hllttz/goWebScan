@@ -4,7 +4,9 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 
+	"github.com/hllttz/goWebScan/internal/osfingerprint"
 	"github.com/hllttz/goWebScan/pkg/goscan"
 )
 
@@ -40,7 +42,7 @@ func TestScanHostsReturnsDeterministicOrder(t *testing.T) {
 		Discovery:   true,
 		HostWorkers: 2,
 		PortWorkers: 2,
-	}, fakeScanner{}, fakeDiscoverer{}, fakeIdentifier{}, ProgressCallbacks{})
+	}, fakeScanner{}, fakeDiscoverer{}, fakeIdentifier{}, osfingerprint.New(time.Millisecond), ProgressCallbacks{})
 
 	report := goscan.Report{Targets: results}
 	normalizeReport(&report)

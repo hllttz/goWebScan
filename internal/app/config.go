@@ -5,6 +5,8 @@ import "time"
 type Config struct {
 	Targets          []string
 	Ports            string
+	ScanMode         string
+	OSFingerprint    bool
 	TopPorts         int
 	ExcludePorts     string
 	Timeout          time.Duration
@@ -28,6 +30,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Ports:            "top",
+		ScanMode:         "connect",
 		Timeout:          2 * time.Second,
 		PortWorkers:      100,
 		HostWorkers:      10,

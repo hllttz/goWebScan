@@ -22,6 +22,16 @@ func WriteText(w io.Writer, r goscan.Report) error {
 				return err
 			}
 		}
+		if target.OS != nil {
+			if _, err := fmt.Fprintf(w, "OS guess: %s (%s, confidence %d), reason: %s\n",
+				reasonText(target.OS.Name),
+				reasonText(target.OS.Family),
+				target.OS.Confidence,
+				reasonText(target.OS.Reason),
+			); err != nil {
+				return err
+			}
+		}
 		if len(target.Ports) == 0 {
 			if _, err := fmt.Fprintln(w, "No ports scanned."); err != nil {
 				return err

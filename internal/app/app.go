@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/hllttz/goWebScan/internal/discovery"
 	"github.com/hllttz/goWebScan/internal/netutil"
+	"github.com/hllttz/goWebScan/internal/osfingerprint"
 	"github.com/hllttz/goWebScan/internal/report"
 	"github.com/hllttz/goWebScan/internal/scanner"
 	"github.com/hllttz/goWebScan/internal/service"
@@ -53,6 +55,9 @@ func ScanWithProgress(ctx context.Context, cfg Config, callbacks ProgressCallbac
 	if cfg.Timeout <= 0 {
 		return goscan.Report{}, fmt.Errorf("timeout must be greater than zero")
 	}
+	if err := validateScanMode(cfg.ScanMode); err != nil {
+		return goscan.Report{}, err
+	}
 
 	targets, err := target.ParseTargets(ctx, cfg.Targets)
 	if err != nil {
@@ -66,16 +71,22 @@ func ScanWithProgress(ctx context.Context, cfg Config, callbacks ProgressCallbac
 	if err != nil {
 		return goscan.Report{}, err
 	}
+	if cfg.ScanMode == "udp" {
+		for i := range ports {
+			ports[i].Protocol = "udp"
+		}
+	}
 	if callbacks.Planned != nil {
 		callbacks.Planned(len(targets), len(ports))
 	}
 
 	dialer := netutil.NewDialer(cfg.Timeout)
-	connectScanner := scanner.NewTCPConnectScanner(dialer, cfg.Timeout)
+	portScanner := newPortScanner(cfg, dialer)
 	discoverer := discovery.NewTCPDiscoverer(dialer, cfg.Timeout, nil)
 	identifier := service.NewBasicIdentifierWithIntensity(cfg.Timeout, cfg.BannerLimit, cfg.VersionIntensity)
+	fingerprinter := osfingerprint.New(cfg.Timeout)
 
-	results := scanHosts(ctx, targets, ports, cfg, connectScanner, discoverer, identifier, callbacks)
+	results := scanHosts(ctx, targets, ports, cfg, portScanner, discoverer, identifier, fingerprinter, callbacks)
 
 	finishedAt := time.Now()
 	final := goscan.Report{
@@ -123,6 +134,8 @@ func scanConfig(cfg Config) goscan.ScanConfig {
 	return goscan.ScanConfig{
 		Targets:          append([]string(nil), cfg.Targets...),
 		Ports:            cfg.Ports,
+		ScanMode:         cfg.ScanMode,
+		OSFingerprint:    cfg.OSFingerprint,
 		TopPorts:         cfg.TopPorts,
 		ExcludePorts:     cfg.ExcludePorts,
 		Discovery:        cfg.Discovery,
@@ -132,6 +145,28 @@ func scanConfig(cfg Config) goscan.ScanConfig {
 		HostWorkers:      cfg.HostWorkers,
 		PortWorkers:      cfg.PortWorkers,
 		OpenOnly:         cfg.OpenOnly,
+	}
+}
+
+func validateScanMode(mode string) error {
+	switch mode {
+	case "", "connect", "syn", "udp":
+		return nil
+	default:
+		return fmt.Errorf("scan mode must be connect, syn, or udp")
+	}
+}
+
+func newPortScanner(cfg Config, dialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
+}) scanner.Scanner {
+	switch cfg.ScanMode {
+	case "syn":
+		return scanner.NewSYNScanner(cfg.Timeout)
+	case "udp":
+		return scanner.NewUDPScanner(cfg.Timeout)
+	default:
+		return scanner.NewTCPConnectScanner(dialer, cfg.Timeout)
 	}
 }
 
@@ -176,7 +211,7 @@ type scanJob struct {
 	port   goscan.Port
 }
 
-func scanHosts(ctx context.Context, targets []goscan.Target, ports []goscan.Port, cfg Config, connectScanner scanner.Scanner, discoverer discovery.Discoverer, identifier service.Identifier, callbacks ProgressCallbacks) []goscan.HostResult {
+func scanHosts(ctx context.Context, targets []goscan.Target, ports []goscan.Port, cfg Config, portScanner scanner.Scanner, discoverer discovery.Discoverer, identifier service.Identifier, fingerprinter *osfingerprint.Fingerprinter, callbacks ProgressCallbacks) []goscan.HostResult {
 	jobs := make(chan goscan.Target)
 	results := make(chan goscan.HostResult)
 
@@ -201,7 +236,10 @@ func scanHosts(ctx context.Context, targets []goscan.Target, ports []goscan.Port
 				}
 				hostResult := goscan.HostResult{Target: t, Status: status, Reason: reason}
 				if status != goscan.HostDown {
-					hostResult.Ports = scanTarget(ctx, t, ports, cfg.PortWorkers, connectScanner, identifier, cfg.ServiceVersion, callbacks.PortDone)
+					hostResult.Ports = scanTarget(ctx, t, ports, cfg.PortWorkers, portScanner, identifier, cfg.ServiceVersion && cfg.ScanMode != "udp", callbacks.PortDone)
+				}
+				if cfg.OSFingerprint {
+					hostResult.OS = osResultPtr(fingerprinter.Fingerprint(ctx, t, hostResult.Ports))
 				}
 				if callbacks.HostDone != nil {
 					callbacks.HostDone(hostResult)
@@ -232,6 +270,10 @@ func scanHosts(ctx context.Context, targets []goscan.Target, ports []goscan.Port
 		out = append(out, result)
 	}
 	return out
+}
+
+func osResultPtr(result goscan.OSResult) *goscan.OSResult {
+	return &result
 }
 
 func scanTarget(ctx context.Context, t goscan.Target, ports []goscan.Port, concurrency int, connectScanner scanner.Scanner, identifier service.Identifier, identify bool, onPortDone func(goscan.Target, goscan.PortResult)) []goscan.PortResult {

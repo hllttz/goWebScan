@@ -50,6 +50,10 @@ func executeScan(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&cfg.OpenOnly, "open", cfg.OpenOnly, "show only open ports in output")
 	fs.BoolVar(&cfg.ServiceVersion, "sV", cfg.ServiceVersion, "enable active service version detection")
 	fs.BoolVar(&cfg.ServiceVersion, "service", cfg.ServiceVersion, "deprecated alias for -sV")
+	sT := fs.Bool("sT", false, "TCP connect scan (default)")
+	sS := fs.Bool("sS", false, "SYN scan mode; requires raw socket privileges")
+	sU := fs.Bool("sU", false, "UDP scan mode")
+	fs.BoolVar(&cfg.OSFingerprint, "O", cfg.OSFingerprint, "enable lightweight OS fingerprinting")
 	fs.IntVar(&cfg.VersionIntensity, "version-intensity", cfg.VersionIntensity, "service detection intensity: 0=port guess, 1=banner, 2=light probes")
 	fs.IntVar(&cfg.BannerLimit, "banner-limit", cfg.BannerLimit, "maximum banner bytes to keep")
 	fs.StringVar(&cfg.ExcludePorts, "exclude-ports", cfg.ExcludePorts, "ports to exclude, for example 25,137-139")
@@ -67,6 +71,10 @@ func executeScan(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	cfg.Discovery = !*noDiscovery && !*pn
+	if err := applyScanMode(cfg.ScanMode, *sT, *sS, *sU, &cfg); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
 	cfg.Targets = append(fs.Args(), targets...)
 	if len(cfg.Targets) == 0 {
 		fmt.Fprintln(stderr, "scan requires at least one target")
@@ -96,6 +104,10 @@ func executeScan(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "version-intensity must be 0, 1, or 2")
 		return 2
 	}
+	if cfg.ScanMode == "udp" && cfg.ServiceVersion {
+		fmt.Fprintln(stderr, "-sV is only supported for TCP scan modes")
+		return 2
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -116,6 +128,29 @@ func executeScan(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func applyScanMode(current string, sT, sS, sU bool, cfg *app.Config) error {
+	selected := 0
+	if sT {
+		selected++
+		cfg.ScanMode = "connect"
+	}
+	if sS {
+		selected++
+		cfg.ScanMode = "syn"
+	}
+	if sU {
+		selected++
+		cfg.ScanMode = "udp"
+	}
+	if selected > 1 {
+		return fmt.Errorf("choose only one scan mode: -sT, -sS, or -sU")
+	}
+	if cfg.ScanMode == "" {
+		cfg.ScanMode = current
+	}
+	return nil
 }
 
 func runScanWithCLIProgress(ctx context.Context, cfg app.Config, stderr io.Writer) (goscan.Report, error) {

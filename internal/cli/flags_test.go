@@ -160,6 +160,16 @@ func TestExecuteScanRejectsInvalidWorkerCounts(t *testing.T) {
 			args: []string{"scan", "127.0.0.1", "-Pn", "-p", "1", "--version-intensity", "3"},
 			want: "version-intensity must be 0, 1, or 2",
 		},
+		{
+			name: "conflicting scan modes",
+			args: []string{"scan", "127.0.0.1", "-Pn", "-p", "1", "-sS", "-sU"},
+			want: "choose only one scan mode",
+		},
+		{
+			name: "udp service detection",
+			args: []string{"scan", "127.0.0.1", "-Pn", "-p", "1", "-sU", "-sV"},
+			want: "-sV is only supported for TCP scan modes",
+		},
 	}
 
 	for _, tt := range tests {

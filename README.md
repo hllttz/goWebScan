@@ -7,6 +7,8 @@ goWebScan is a Go-based network scanner inspired by nmap. The current focus is a
 ## Features
 
 - TCP Connect Scanner, no raw socket privileges required.
+- Explicit scan modes: TCP connect (`-sT`), SYN mode (`-sS`), and UDP (`-sU`).
+- Lightweight OS fingerprinting with `-O`.
 - Host discovery with TCP probes.
 - Port states: `open`, `closed`, `filtered`, `unreachable`, `unknown`.
 - `reason` field explains why each state was assigned.
@@ -52,7 +54,11 @@ Common flags:
 --top-ports N        Scan the N most common TCP ports
 --exclude-ports      Exclude ports, for example 25,137-139
 -Pn                  Skip host discovery
+-sT                  TCP connect scan, the default
+-sS                  SYN scan mode; requires raw socket privileges
+-sU                  UDP scan mode
 -sV                  Enable active service version detection
+-O                   Enable lightweight OS fingerprinting
 --version-intensity  Service detection depth: 0=port guess, 1=banner, 2=light probes
 --open               Show only open ports in output
 --timeout            Per-connection timeout
@@ -79,6 +85,12 @@ goscan scan 192.168.1.0/24 -p 22,80,443 --host-workers 20 --port-workers 200
 
 # Enable service detection
 goscan scan 127.0.0.1 -Pn -p 22,80,443,8080 -sV
+
+# UDP scan
+goscan scan 127.0.0.1 -Pn -sU -p 53,123,161
+
+# SYN mode and OS fingerprinting
+goscan scan 192.168.1.10 -sS -O -p 22,80,443
 
 # Enable light active probes for HTTP title, Redis PING, and memcached version
 goscan scan 127.0.0.1 -Pn -p 80,6379,11211 -sV --version-intensity 2
@@ -139,6 +151,12 @@ Current detectors include:
 - Unknown-service fallback with truncated banner capture.
 
 This is intentionally conservative and lightweight. It is not NSE-compatible and does not try to bypass firewalls or IDS systems.
+
+## Advanced Scan Modes
+
+`-sT` is the default TCP connect mode and works without elevated privileges. `-sU` sends small UDP probes and reports `open` when a UDP response is received; no response is reported as filtered because UDP often drops silently. `-sS` checks raw socket capability and clearly reports `raw_socket_unavailable` if the process lacks permission. The current SYN mode is a conservative MVP and falls back to a TCP connect probe after the raw socket check instead of crafting packets in user space.
+
+`-O` performs lightweight OS fingerprinting from TTL and open-port hints. Treat the result as a heuristic with a confidence score, not a definitive OS identification.
 
 ## Release Builds
 
