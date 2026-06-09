@@ -17,6 +17,7 @@ goWebScan is a Go-based network scanner inspired by nmap. The current focus is a
 - Exclude ports with `--exclude-ports`.
 - `-Pn` to skip host discovery.
 - `-sV` active service detection.
+- `--version-intensity` controls service detection depth.
 - `--open` to show only open ports.
 - CLI progress display.
 - Ctrl+C graceful cancellation with partial results.
@@ -52,6 +53,7 @@ Common flags:
 --exclude-ports      Exclude ports, for example 25,137-139
 -Pn                  Skip host discovery
 -sV                  Enable active service version detection
+--version-intensity  Service detection depth: 0=port guess, 1=banner, 2=light probes
 --open               Show only open ports in output
 --timeout            Per-connection timeout
 --host-workers       Maximum concurrent target hosts
@@ -77,6 +79,9 @@ goscan scan 192.168.1.0/24 -p 22,80,443 --host-workers 20 --port-workers 200
 
 # Enable service detection
 goscan scan 127.0.0.1 -Pn -p 22,80,443,8080 -sV
+
+# Enable light active probes for HTTP title, Redis PING, and memcached version
+goscan scan 127.0.0.1 -Pn -p 80,6379,11211 -sV --version-intensity 2
 
 # JSON output
 goscan scan 127.0.0.1 -Pn -p 1-1024 --json
@@ -115,14 +120,23 @@ GoScan done: 1 IP address(es) scanned
 
 ## Service Detection
 
-`-sV` performs lightweight active service detection. It currently includes:
+`-sV` performs lightweight service detection through detector modules. Detection intensity controls how much interaction is allowed:
 
-- HTTP and HTTPS detection.
-- SSH banner parsing.
+```text
+0  Port-based guess only
+1  Banner reads only, the default for -sV
+2  Light probes such as HTTP HEAD/GET, Redis PING, and memcached version
+```
+
+Current detectors include:
+
+- HTTP and HTTPS metadata: status, Server, X-Powered-By, redirect location, title.
+- TLS certificate basics: CN, SAN, issuer, validity dates, TLS version.
+- SSH banner parsing with protocol, product, and version.
 - FTP, SMTP, POP3, IMAP banner signatures.
-- MySQL, PostgreSQL, VNC, Redis, and memcached signatures.
-- Redis PING probe.
-- HTTP probe fallback for non-standard ports.
+- MySQL handshake banner, PostgreSQL port guess, and VNC banner parsing.
+- Redis PING and memcached version probes at intensity 2.
+- Unknown-service fallback with truncated banner capture.
 
 This is intentionally conservative and lightweight. It is not NSE-compatible and does not try to bypass firewalls or IDS systems.
 
@@ -134,6 +148,14 @@ Local release artifacts are generated as:
 dist/goscan-v0.1.0-linux-amd64.tar.gz
 dist/goscan-v0.1.0-windows-amd64.zip
 dist/checksums.txt
+```
+
+Use the Makefile for common development tasks:
+
+```bash
+make test
+make build
+make release
 ```
 
 Manual cross-compilation:

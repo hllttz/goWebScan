@@ -90,6 +90,92 @@ func TestExecuteScanWritesOutputFilesAndSilentProgress(t *testing.T) {
 	}
 }
 
+func TestExecuteScanJSONFilePromptAndQuiet(t *testing.T) {
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "scan.json")
+	var stdout, stderr bytes.Buffer
+	code := Execute([]string{
+		"scan",
+		"127.0.0.1",
+		"-Pn",
+		"-p", "1",
+		"--timeout", "1ms",
+		"-oJ", jsonPath,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr=%s", code, stderr.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("Wrote JSON output to ")) {
+		t.Fatalf("stdout missing JSON prompt: %q", stdout.String())
+	}
+
+	quietPath := filepath.Join(dir, "quiet.json")
+	stdout.Reset()
+	stderr.Reset()
+	code = Execute([]string{
+		"scan",
+		"127.0.0.1",
+		"-Pn",
+		"-p", "1",
+		"--timeout", "1ms",
+		"--quiet",
+		"-oJ", quietPath,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code %d, stderr=%s", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("quiet stdout = %q, want empty", stdout.String())
+	}
+}
+
+func TestExecuteScanRejectsInvalidWorkerCounts(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "host workers",
+			args: []string{"scan", "127.0.0.1", "-Pn", "-p", "1", "--host-workers", "0"},
+			want: "host-workers must be greater than zero",
+		},
+		{
+			name: "port workers",
+			args: []string{"scan", "127.0.0.1", "-Pn", "-p", "1", "--port-workers", "0"},
+			want: "port-workers must be greater than zero",
+		},
+		{
+			name: "top ports",
+			args: []string{"scan", "127.0.0.1", "-Pn", "--top-ports", "-1"},
+			want: "top-ports must not be negative",
+		},
+		{
+			name: "banner limit",
+			args: []string{"scan", "127.0.0.1", "-Pn", "-p", "1", "--banner-limit", "0"},
+			want: "banner-limit must be greater than zero",
+		},
+		{
+			name: "version intensity",
+			args: []string{"scan", "127.0.0.1", "-Pn", "-p", "1", "--version-intensity", "3"},
+			want: "version-intensity must be 0, 1, or 2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := Execute(tt.args, &stdout, &stderr)
+			if code != 2 {
+				t.Fatalf("exit code %d, stderr=%s", code, stderr.String())
+			}
+			if !bytes.Contains(stderr.Bytes(), []byte(tt.want)) {
+				t.Fatalf("stderr = %q, want %q", stderr.String(), tt.want)
+			}
+		})
+	}
+}
+
 func TestFilterOpen(t *testing.T) {
 	report := goscan.Report{Targets: []goscan.HostResult{{
 		Ports: []goscan.PortResult{

@@ -50,12 +50,14 @@ func executeScan(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&cfg.OpenOnly, "open", cfg.OpenOnly, "show only open ports in output")
 	fs.BoolVar(&cfg.ServiceVersion, "sV", cfg.ServiceVersion, "enable active service version detection")
 	fs.BoolVar(&cfg.ServiceVersion, "service", cfg.ServiceVersion, "deprecated alias for -sV")
+	fs.IntVar(&cfg.VersionIntensity, "version-intensity", cfg.VersionIntensity, "service detection intensity: 0=port guess, 1=banner, 2=light probes")
 	fs.IntVar(&cfg.BannerLimit, "banner-limit", cfg.BannerLimit, "maximum banner bytes to keep")
 	fs.StringVar(&cfg.ExcludePorts, "exclude-ports", cfg.ExcludePorts, "ports to exclude, for example 25,137-139")
 	fs.StringVar(&cfg.OutputText, "oT", cfg.OutputText, "write normal text output to file")
 	fs.StringVar(&cfg.OutputJSON, "oJ", cfg.OutputJSON, "write JSON output to file")
 	fs.StringVar(&cfg.OutputCSV, "oC", cfg.OutputCSV, "write CSV output to file")
 	fs.BoolVar(&cfg.Silent, "silent", cfg.Silent, "suppress progress output")
+	fs.BoolVar(&cfg.Silent, "quiet", cfg.Silent, "suppress progress output and output-file prompts")
 	fs.BoolVar(&cfg.Verbose, "verbose", cfg.Verbose, "write verbose progress output")
 	fs.BoolVar(&cfg.NoColor, "no-color", cfg.NoColor, "disable colored output")
 	noDiscovery := fs.Bool("no-discovery", false, "skip host discovery")
@@ -72,6 +74,26 @@ func executeScan(args []string, stdout, stderr io.Writer) int {
 	}
 	if cfg.Timeout < time.Millisecond {
 		fmt.Fprintln(stderr, "timeout is too small")
+		return 2
+	}
+	if cfg.PortWorkers <= 0 {
+		fmt.Fprintln(stderr, "port-workers must be greater than zero")
+		return 2
+	}
+	if cfg.HostWorkers <= 0 {
+		fmt.Fprintln(stderr, "host-workers must be greater than zero")
+		return 2
+	}
+	if cfg.TopPorts < 0 {
+		fmt.Fprintln(stderr, "top-ports must not be negative")
+		return 2
+	}
+	if cfg.BannerLimit <= 0 {
+		fmt.Fprintln(stderr, "banner-limit must be greater than zero")
+		return 2
+	}
+	if cfg.VersionIntensity < 0 || cfg.VersionIntensity > 2 {
+		fmt.Fprintln(stderr, "version-intensity must be 0, 1, or 2")
 		return 2
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -178,6 +200,10 @@ func writeOutputs(stdout io.Writer, result goscan.Report, cfg app.Config) error 
 	if cfg.JSON && !wroteStdout {
 		return report.WriteJSON(stdout, result)
 	}
+	if cfg.OutputJSON != "" && cfg.OutputText == "" && cfg.OutputCSV == "" && !cfg.Silent {
+		_, err := fmt.Fprintf(stdout, "Wrote JSON output to %s\n", cfg.OutputJSON)
+		return err
+	}
 	return nil
 }
 
@@ -191,21 +217,57 @@ func writeFile(path string, write func(io.Writer) error) error {
 }
 
 func filterOpen(result goscan.Report) goscan.Report {
-	targets := result.Targets[:0]
-	for i := range result.Targets {
-		ports := result.Targets[i].Ports[:0]
-		for _, port := range result.Targets[i].Ports {
+	hosts := result.HostResults()
+	targets := hosts[:0]
+	for i := range hosts {
+		ports := hosts[i].Ports[:0]
+		for _, port := range hosts[i].Ports {
 			if port.State == goscan.PortOpen {
 				ports = append(ports, port)
 			}
 		}
-		result.Targets[i].Ports = ports
+		hosts[i].Ports = ports
 		if len(ports) > 0 {
-			targets = append(targets, result.Targets[i])
+			targets = append(targets, hosts[i])
 		}
 	}
-	result.Targets = targets
+	result.SetHosts(targets)
+	result.Summary = summarizeFiltered(result.Summary, targets)
 	return result
+}
+
+func summarizeFiltered(base goscan.ScanSummary, hosts []goscan.HostResult) goscan.ScanSummary {
+	startedAt := base.StartedAt
+	finishedAt := base.FinishedAt
+	canceled := base.Canceled
+	base = goscan.ScanSummary{StartedAt: startedAt, FinishedAt: finishedAt, ElapsedMs: base.ElapsedMs, Canceled: canceled}
+	base.HostsTotal = len(hosts)
+	for _, host := range hosts {
+		switch host.Status {
+		case goscan.HostUp:
+			base.HostsUp++
+		case goscan.HostDown:
+			base.HostsDown++
+		default:
+			base.HostsUnknown++
+		}
+		for _, port := range host.Ports {
+			base.PortsScanned++
+			switch port.State {
+			case goscan.PortOpen:
+				base.PortsOpen++
+			case goscan.PortClosed:
+				base.PortsClosed++
+			case goscan.PortFiltered:
+				base.PortsFiltered++
+			case goscan.PortUnreachable:
+				base.PortsUnreachable++
+			default:
+				base.PortsUnknown++
+			}
+		}
+	}
+	return base
 }
 
 func splitScanArgs(args []string) ([]string, []string) {
@@ -218,6 +280,7 @@ func splitScanArgs(args []string) ([]string, []string) {
 		"-host-workers": {}, "--host-workers": {},
 		"-host-concurrency": {}, "--host-concurrency": {},
 		"-banner-limit": {}, "--banner-limit": {},
+		"-version-intensity": {}, "--version-intensity": {},
 		"-exclude-ports": {}, "--exclude-ports": {},
 		"-oT": {}, "--oT": {}, "-oJ": {}, "--oJ": {}, "-oC": {}, "--oC": {},
 	}

@@ -1,0 +1,23 @@
+Scan report for 127.0.0.1
+Host is up, reason: -Pn
+
+PORT      STATE        SERVICE       VERSION            REASON
+22/tcp    open         ssh           OpenSSH 8.9        connected
+  banner: SSH-2.0-OpenSSH_8.9
+80/tcp    closed       http          -                  connection_refused
+443/tcp   filtered     https         -                  timeout
+  tls_cn: example.test
+  tls_version: TLS1.3
+
+Summary:
+  hosts total: 1
+  hosts up: 1
+  hosts down: 0
+  hosts unknown: 0
+  ports scanned: 3
+  open: 1
+  closed: 1
+  filtered: 1
+  unreachable: 0
+  unknown: 0
+  elapsed: 1.23s

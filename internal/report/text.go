@@ -3,7 +3,6 @@ package report
 import (
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 	"time"
 
@@ -11,14 +10,11 @@ import (
 )
 
 func WriteText(w io.Writer, r goscan.Report) error {
-	if _, err := fmt.Fprintf(w, "Starting GoScan 0.1 at %s\n", time.Now().Format("2006-01-02 15:04 MST")); err != nil {
-		return err
-	}
-	for _, target := range r.Targets {
-		if _, err := fmt.Fprintf(w, "GoScan scan report for %s\n", targetName(target)); err != nil {
+	for _, target := range r.HostResults() {
+		if _, err := fmt.Fprintf(w, "Scan report for %s\n", targetName(target)); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(w, "Host is %s (%s).\n", target.Status, reasonText(target.Reason)); err != nil {
+		if _, err := fmt.Fprintf(w, "Host is %s, reason: %s\n", target.Status, reasonText(target.Reason)); err != nil {
 			return err
 		}
 		if target.Error != "" {
@@ -26,9 +22,6 @@ func WriteText(w io.Writer, r goscan.Report) error {
 				return err
 			}
 		}
-		sort.Slice(target.Ports, func(i, j int) bool {
-			return target.Ports[i].Port.Number < target.Ports[j].Port.Number
-		})
 		if len(target.Ports) == 0 {
 			if _, err := fmt.Fprintln(w, "No ports scanned."); err != nil {
 				return err
@@ -37,6 +30,9 @@ func WriteText(w io.Writer, r goscan.Report) error {
 				return err
 			}
 			continue
+		}
+		if _, err := fmt.Fprintln(w); err != nil {
+			return err
 		}
 		if _, err := fmt.Fprintln(w, "PORT      STATE        SERVICE       VERSION            REASON"); err != nil {
 			return err
@@ -52,25 +48,46 @@ func WriteText(w io.Writer, r goscan.Report) error {
 			); err != nil {
 				return err
 			}
-		}
-		summary := summarizePorts(target.Ports)
-		if _, err := fmt.Fprintf(w, "Port summary: %d open, %d closed, %d filtered, %d unreachable, %d unknown\n",
-			summary.open, summary.closed, summary.filtered, summary.unreachable, summary.unknown); err != nil {
-			return err
+			for _, detail := range serviceDetails(port) {
+				if _, err := fmt.Fprintf(w, "  %s\n", detail); err != nil {
+					return err
+				}
+			}
 		}
 		if _, err := fmt.Fprintln(w); err != nil {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(w, "GoScan done: %d IP address(es) scanned\n", len(r.Targets)); err != nil {
-		return err
+	return WriteSummary(w, r.Summary)
+}
+
+func serviceDetails(port goscan.PortResult) []string {
+	if port.Service == nil {
+		return nil
 	}
-	return nil
+	var details []string
+	for _, key := range []string{"status", "server", "title", "location", "tls_cn", "tls_issuer", "tls_not_after", "tls_version"} {
+		if value := port.Service.Extra[key]; value != "" {
+			details = append(details, fmt.Sprintf("%s: %s", key, value))
+		}
+	}
+	if port.Service.Banner != "" {
+		banner := strings.Join(strings.Fields(port.Service.Banner), " ")
+		details = append(details, fmt.Sprintf("banner: %s", truncateText(banner, 120)))
+	}
+	return details
+}
+
+func truncateText(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	return value[:limit]
 }
 
 func targetName(target goscan.HostResult) string {
 	if len(target.Target.Addresses) > 0 {
-		return fmt.Sprintf("%s (%s)", target.Target.Input, target.Target.Addresses[0])
+		return target.Target.Addresses[0].String()
 	}
 	return target.Target.Input
 }
@@ -107,29 +124,45 @@ func reasonText(reason string) string {
 	return reason
 }
 
-type portSummary struct {
-	open        int
-	closed      int
-	filtered    int
-	unreachable int
-	unknown     int
-}
-
-func summarizePorts(ports []goscan.PortResult) portSummary {
-	var summary portSummary
-	for _, port := range ports {
-		switch port.State {
-		case goscan.PortOpen:
-			summary.open++
-		case goscan.PortClosed:
-			summary.closed++
-		case goscan.PortFiltered:
-			summary.filtered++
-		case goscan.PortUnreachable:
-			summary.unreachable++
-		default:
-			summary.unknown++
+func WriteSummary(w io.Writer, summary goscan.ScanSummary) error {
+	if _, err := fmt.Fprintln(w, "Summary:"); err != nil {
+		return err
+	}
+	if summary.Canceled {
+		if _, err := fmt.Fprintln(w, "  status: canceled"); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "  scanned before cancel: %d ports\n", summary.PortsScanned); err != nil {
+			return err
 		}
 	}
-	return summary
+	lines := []struct {
+		name  string
+		value any
+	}{
+		{"hosts total", summary.HostsTotal},
+		{"hosts up", summary.HostsUp},
+		{"hosts down", summary.HostsDown},
+		{"hosts unknown", summary.HostsUnknown},
+		{"ports scanned", summary.PortsScanned},
+		{"open", summary.PortsOpen},
+		{"closed", summary.PortsClosed},
+		{"filtered", summary.PortsFiltered},
+		{"unreachable", summary.PortsUnreachable},
+		{"unknown", summary.PortsUnknown},
+		{"elapsed", elapsedText(summary)},
+	}
+	for _, line := range lines {
+		if _, err := fmt.Fprintf(w, "  %s: %v\n", line.name, line.value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func elapsedText(summary goscan.ScanSummary) string {
+	if summary.ElapsedMs <= 0 && !summary.StartedAt.IsZero() && !summary.FinishedAt.IsZero() {
+		return summary.FinishedAt.Sub(summary.StartedAt).Round(time.Millisecond).String()
+	}
+	return (time.Duration(summary.ElapsedMs) * time.Millisecond).String()
 }

@@ -1,0 +1,88 @@
+{
+  "config": {
+    "targets": [
+      "127.0.0.1"
+    ],
+    "ports": "22,80,443",
+    "discovery": false,
+    "service_version": true,
+    "version_intensity": 2,
+    "timeout_ms": 2000,
+    "host_workers": 10,
+    "port_workers": 100
+  },
+  "hosts": [
+    {
+      "target": {
+        "input": "127.0.0.1",
+        "addresses": [
+          "127.0.0.1"
+        ]
+      },
+      "status": "up",
+      "reason": "-Pn",
+      "ports": [
+        {
+          "port": {
+            "port": 22,
+            "protocol": "tcp"
+          },
+          "state": "open",
+          "reason": "connected",
+          "latency": 12000000,
+          "service": {
+            "name": "ssh",
+            "product": "OpenSSH",
+            "version": "8.9",
+            "banner": "SSH-2.0-OpenSSH_8.9\r\n",
+            "reason": "ssh_banner"
+          }
+        },
+        {
+          "port": {
+            "port": 80,
+            "protocol": "tcp"
+          },
+          "state": "closed",
+          "reason": "connection_refused",
+          "latency": 3000000,
+          "service": {
+            "name": "http"
+          }
+        },
+        {
+          "port": {
+            "port": 443,
+            "protocol": "tcp"
+          },
+          "state": "filtered",
+          "reason": "timeout",
+          "latency": 1000000000,
+          "service": {
+            "name": "https",
+            "extra": {
+              "tls_cn": "example.test",
+              "tls_version": "TLS1.3"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "hosts_total": 1,
+    "hosts_up": 1,
+    "hosts_down": 0,
+    "hosts_unknown": 0,
+    "ports_scanned": 3,
+    "ports_open": 1,
+    "ports_closed": 1,
+    "ports_filtered": 1,
+    "ports_unreachable": 0,
+    "ports_unknown": 0,
+    "started_at": "2026-06-09T10:00:00Z",
+    "finished_at": "2026-06-09T10:00:01.23Z",
+    "elapsed_ms": 1230,
+    "canceled": false
+  }
+}

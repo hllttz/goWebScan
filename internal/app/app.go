@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/hllttz/goWebScan/internal/discovery"
 	"github.com/hllttz/goWebScan/internal/netutil"
@@ -41,6 +43,7 @@ type ProgressCallbacks struct {
 }
 
 func ScanWithProgress(ctx context.Context, cfg Config, callbacks ProgressCallbacks) (goscan.Report, error) {
+	startedAt := time.Now()
 	if cfg.PortWorkers <= 0 {
 		return goscan.Report{}, fmt.Errorf("port-workers must be greater than zero")
 	}
@@ -70,15 +73,102 @@ func ScanWithProgress(ctx context.Context, cfg Config, callbacks ProgressCallbac
 	dialer := netutil.NewDialer(cfg.Timeout)
 	connectScanner := scanner.NewTCPConnectScanner(dialer, cfg.Timeout)
 	discoverer := discovery.NewTCPDiscoverer(dialer, cfg.Timeout, nil)
-	identifier := service.NewBasicIdentifier(cfg.Timeout, cfg.BannerLimit)
+	identifier := service.NewBasicIdentifierWithIntensity(cfg.Timeout, cfg.BannerLimit, cfg.VersionIntensity)
 
 	results := scanHosts(ctx, targets, ports, cfg, connectScanner, discoverer, identifier, callbacks)
 
-	final := goscan.Report{Targets: results}
+	finishedAt := time.Now()
+	final := goscan.Report{
+		Config:  scanConfig(cfg),
+		Summary: summarizeScan(results, startedAt, finishedAt, ctx.Err() != nil),
+	}
+	final.SetHosts(results)
+	normalizeReport(&final)
 	if ctx.Err() != nil {
 		return final, ctx.Err()
 	}
 	return final, nil
+}
+
+func normalizeReport(r *goscan.Report) {
+	hosts := r.HostResults()
+	sort.SliceStable(hosts, func(i, j int) bool {
+		return targetSortKey(hosts[i].Target) < targetSortKey(hosts[j].Target)
+	})
+	for i := range hosts {
+		sort.SliceStable(hosts[i].Ports, func(a, b int) bool {
+			left := hosts[i].Ports[a].Port
+			right := hosts[i].Ports[b].Port
+			if left.Number != right.Number {
+				return left.Number < right.Number
+			}
+			return left.Protocol < right.Protocol
+		})
+	}
+	r.SetHosts(hosts)
+	r.Summary = summarizeScan(hosts, r.Summary.StartedAt, r.Summary.FinishedAt, r.Summary.Canceled)
+}
+
+func targetSortKey(target goscan.Target) string {
+	if len(target.Addresses) > 0 {
+		return target.Addresses[0].String()
+	}
+	if target.Hostname != "" {
+		return target.Hostname
+	}
+	return target.Input
+}
+
+func scanConfig(cfg Config) goscan.ScanConfig {
+	return goscan.ScanConfig{
+		Targets:          append([]string(nil), cfg.Targets...),
+		Ports:            cfg.Ports,
+		TopPorts:         cfg.TopPorts,
+		ExcludePorts:     cfg.ExcludePorts,
+		Discovery:        cfg.Discovery,
+		ServiceVersion:   cfg.ServiceVersion,
+		VersionIntensity: cfg.VersionIntensity,
+		TimeoutMs:        cfg.Timeout.Milliseconds(),
+		HostWorkers:      cfg.HostWorkers,
+		PortWorkers:      cfg.PortWorkers,
+		OpenOnly:         cfg.OpenOnly,
+	}
+}
+
+func summarizeScan(hosts []goscan.HostResult, startedAt, finishedAt time.Time, canceled bool) goscan.ScanSummary {
+	summary := goscan.ScanSummary{
+		HostsTotal: len(hosts),
+		StartedAt:  startedAt,
+		FinishedAt: finishedAt,
+		ElapsedMs:  finishedAt.Sub(startedAt).Milliseconds(),
+		Canceled:   canceled,
+	}
+	for _, host := range hosts {
+		switch host.Status {
+		case goscan.HostUp:
+			summary.HostsUp++
+		case goscan.HostDown:
+			summary.HostsDown++
+		default:
+			summary.HostsUnknown++
+		}
+		for _, port := range host.Ports {
+			summary.PortsScanned++
+			switch port.State {
+			case goscan.PortOpen:
+				summary.PortsOpen++
+			case goscan.PortClosed:
+				summary.PortsClosed++
+			case goscan.PortFiltered:
+				summary.PortsFiltered++
+			case goscan.PortUnreachable:
+				summary.PortsUnreachable++
+			default:
+				summary.PortsUnknown++
+			}
+		}
+	}
+	return summary
 }
 
 type scanJob struct {
